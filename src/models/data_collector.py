@@ -1,57 +1,41 @@
-import requests
+import aiohttp
+import asyncio
 from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
 
-def fetch_junggonara(product_name):
-    """
-    중고나라에서 주어진 제품명을 검색하고 결과를 수집하는 함수.
-    """
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'}
-    search_url = f"https://search.jungonara.com/listing?keyword={product_name.replace(' ', '%20')}"
-    response = requests.get(search_url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
+async def fetch_page(session, url):
+    try:
+        async with session.get(url, timeout=10) as response:  # 타임아웃 설정
+            return await response.text()
+    except asyncio.TimeoutError:
+        print(f"Timeout occurred while fetching {url}")
+        return None
 
-    products = []
-    listings = soup.find_all('div', class_='listing-item')
-    for item in listings:
-        name = item.find('h3', class_='item-title').text.strip()
-        price = item.find('span', class_='item-price').text.strip()
-        products.append({'name': name, 'price': price})
+async def fetch_details(session, url):
+    html = await fetch_page(session, url)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        # 데이터 추출 로직 구현
+        return {
+            'details': 'Details extracted here'
+        }
+    return {}
 
-    return products
+async def fetch_products(session, product_name, base_url):
+    search_url = f"{base_url}?keyword={product_name.replace(' ', '%20')}"
+    html = await fetch_page(session, search_url)
+    if html:
+        soup = BeautifulSoup(html, 'html.parser')
+        product_links = [link['href'] for link in soup.find_all('a', class_='product-link')]
+        details_tasks = [fetch_details(session, link) for link in product_links]
+        return await asyncio.gather(*details_tasks)
+    return []
 
-def fetch_bunjang(product_name):
-    # 번개장터에 맞는 스크래핑 로직 (가짜 구현)
-    pass
+async def main():
+    async with aiohttp.ClientSession() as session:
+        product_name = "iPhone 13"
+        base_url = "https://example.com/search"
+        results = await fetch_products(session, product_name, base_url)
+        print(results)
 
-def fetch_karrot(product_name):
-    # 당근마켓에 맞는 스크래핑 로직 (가짜 구현)
-    pass
-
-def fetch_instagram(product_name):
-    # 인스타그램에 맞는 스크래핑 로직 (가짜 구현)
-    pass
-
-def fetch_facebook(product_name):
-    # 페이스북에 맞는 스크래핑 로직 (가짜 구현)
-    pass
-
-def fetch_all_platforms(product_name):
-    """
-    모든 플랫폼에서 동시에 데이터를 수집하는 함수.
-    """
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [
-            executor.submit(fetch_junggonara, product_name),
-            executor.submit(fetch_bunjang, product_name),
-            executor.submit(fetch_karrot, product_name),
-            executor.submit(fetch_instagram, product_name),
-            executor.submit(fetch_facebook, product_name)
-        ]
-        return [future.result() for future in futures]
-
-# 사용 예
 if __name__ == "__main__":
-    product_name = "iPhone 13"
-    results = fetch_all_platforms(product_name)
-    print(results)
+    asyncio.run(main())
